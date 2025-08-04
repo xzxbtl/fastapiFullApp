@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %} Edit - User {% endblock %}
+
+{% block head %}
+{{ super() }}
+    <link rel="stylesheet" href="/static/css/edit-user.css">
+    <script src="/static/js/edit-user.js" defer></script>
+{% endblock %}
+
+
+{% block content %}
+    <section class="user-section">
+        <!-- Форма поиска -->
+        <div class="search-container" id="searchContainer">
+            <h1 class="search-title">Search User</h1>
+            <form id="searchUserForm" class="search-form">
+                <div class="form-group">
+                    <label for="user_id_or_username">User ID or Username</label>
+                    <input type="text" id="user_id_or_username" name="user_id_or_username" required
+                           placeholder="Enter user ID or username">
+                    <p class="info-text">You can search by either user ID (number) or username (text)</p>
+                </div>
+                <button type="submit" class="search-btn">Search User</button>
+                <div class="error-message" id="errorMessage"></div>
+            </form>
+        </div>
+
+        <!-- Форма редактирования (скрыта изначально) -->
+        <div class="edit-container" id="editContainer" style="display: none;">
+            <h1 class="form-title">Edit User: <span id="editUsername"></span></h1>
+            <form id="editUserForm" class="edit-form">
+                    <input type="hidden" id="user_id" name="id">
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" name="username" minlength="1" maxlength="64" required>
+                        <div class="char-counter" id="usernameCounter">0/64</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="age">Age <span class="optional">(optional)</span></label>
+                        <input type="number" id="age" name="age" max="120">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="email">Email</label>
+                        <input type="email" id="email" name="email" required>
+                        <div class="char-counter" id="emailCounter">0/64</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" minlength="8" maxlength="64" placeholder="Leave empty to keep current" required>
+                        <div class="char-counter" id="passwordCounter">0/64</div>
+                        <div class="password-strength">
+                            <div class="strength-meter" id="strengthMeter"></div>
+                        </div>
+                    </div>
+
+                    {% if token_lvl >= 3 %}
+                        <div class="form-group">
+                            <label for="access_level">Access Level</label>
+                            <input type="number" id="access_level" name="access_level" min="1" max="3" required>
+                        </div>
+                    {% endif %}
+
+                    <div class="form-group">
+                        <label for="bio">BIO</label>
+                        <input type="text" id="bio" name="bio" maxlength="140">
+                        <div class="char-counter" id="bioCounter">0/140</div>
+                    </div>
+                <button type="submit" class="submit-btn">Save Changes</button>
+            </form>
+        </div>
+
+        <!-- Форма результата (скрыта изначально) -->
+        <div class="result-container" id="resultContainer" style="display: none;">
+            <h2 class="result-title">User Updated Successfully</h2>
+            <div class="user-details">
+                <div class="detail-row">
+                    <span class="detail-label">ID:</span>
+                    <span class="detail-value" id="resultId"></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Username:</span>
+                    <span class="detail-value" id="resultUsername"></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Email:</span>
+                    <span class="detail-value" id="resultEmail"></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Age:</span>
+                    <span class="detail-value" id="resultAge"></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Access Level:</span>
+                    <span class="detail-value" id="resultAccessLevel"></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">BIO:</span>
+                    <span class="detail-value" id="resultBio"></span>
+                </div>
+            </div>
+            <button id="editAnotherBtn" class="submit-btn">Edit Another User</button>
+        </div>
+    </section>
+{% endblock %}

@@ -1,0 +1,113 @@
+version: "4.43.1"
+services:
+  fastapirabbit:
+    image: rabbitmq:4-management
+    hostname: rabbitmq
+    restart: always
+    environment:
+      - RABBITMQ_DEFAULT_USER=rmuser
+      - RABBITMQ_DEFAULT_PASS=rmpassword
+      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit disk_free_limit 2147483648
+    volumes:
+      - ./rabbitmq:/var/lib/rabbitmq
+    ports:
+      - 5672:5672
+      - 15672:15672
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "status" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  fastapiauth:
+    build: .
+    ports:
+      - "8000:8000"
+    depends_on:
+      fastapirabbit:
+        condition: service_healthy
+      postgresql:
+        condition: service_healthy
+    env_file:
+      - PetProject/src/admin_conf.env
+      - PetProject/src/jwt_token.env
+      - PetProject/src/sentry.env
+      - PetProject/src/base/venv/__base_conf__.env
+
+  redis:
+    image: redis:latest
+    container_name: redis_container
+    ports:
+      - "6380:6379"
+    volumes:
+      - ./redisdata:/data
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 2048M
+        reservations:
+          cpus: '0.25'
+          memory: 1024M
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: [ "CMD", "redis-cli", "-a", "ping" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  postgresql:
+    image: postgres:latest
+    container_name: postgres_container
+    environment:
+      POSTGRES_USER: xzxbtl
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: fastapiprod
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5430:5432"
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data/pgdata
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    command: >
+      postgres -c max_connections=1000
+               -c shared_buffers=256MB
+               -c effective_cache_size=768MB
+               -c maintenance_work_mem=64MB
+               -c checkpoint_completion_target=0.7
+               -c wal_buffers=16MB
+               -c default_statistics_target=100
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U xzxbtl -d fastapiprod" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+
+  pgadmin4:
+    container_name: pgadmin4
+    image: dpage/pgadmin4
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: xzxbtl@mail.ru
+      PGADMIN_DEFAULT_PASSWORD: root
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+
+volumes:
+  pgdata:
+    driver: local
+  pgadmin_data:
+    driver: local

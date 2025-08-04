@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %} All Tasks {% endblock %}
+
+{% block head %}
+    {{ super() }}
+    <link rel="stylesheet" href="/static/css/tasks.css">
+{% endblock %}
+
+
+{% block content %}
+
+<section>
+    <div class="container">
+        {% for task in paginated_tasks %}
+        <div class="item">
+            <div class="item-header">{{ task.author_name }} - {{ task.title }}</div>
+            <div class="item-description">
+                {{ task.description|truncate(200) }}...
+            </div>
+            <a href="#" class="item-more">Читать далее</a>
+        </div>
+        {% endfor %}
+    </div>
+        <div class="pagination">
+            {# Кнопка "Назад" #}
+            {% if pagination.has_prev %}
+                <a href="?page={{ pagination.prev_num }}" class="pagination-link" aria-label="Предыдущая страница">
+                    &laquo;
+                </a>
+            {% else %}
+                <span class="pagination-disabled" aria-disabled="true">&laquo;</span>
+            {% endif %}
+
+            {# Диапазон страниц (5 видимых) #}
+            {% set start_page = [1, pagination.current_page - 2]|max %}
+            {% set end_page = [pagination.total_pages, pagination.current_page + 2]|min %}
+
+            {# Первая страница + многоточие #}
+            {% if start_page > 1 %}
+                <a href="?page=1" class="pagination-link">1</a>
+                {% if start_page > 2 %}<span class="pagination-ellipsis">...</span>{% endif %}
+            {% endif %}
+
+            {# Основные страницы #}
+            {% for page_num in range(start_page, end_page + 1) %}
+                {% if page_num == pagination.current_page %}
+                    <span class="pagination-active" aria-current="page">{{ page_num }}</span>
+                {% else %}
+                    <a href="?page={{ page_num }}" class="pagination-link">{{ page_num }}</a>
+                {% endif %}
+            {% endfor %}
+
+            {# Последняя страница + многоточие #}
+            {% if end_page < pagination.total_pages %}
+                {% if end_page < pagination.total_pages - 1 %}<span class="pagination-ellipsis">...</span>{% endif %}
+                <a href="?page={{ pagination.total_pages }}" class="pagination-link">{{ pagination.total_pages }}</a>
+            {% endif %}
+
+            {# Кнопка "Вперед" #}
+            {% if pagination.has_next %}
+                <a href="?page={{ pagination.next_num }}" class="pagination-link" aria-label="Следующая страница">
+                    &raquo;
+                </a>
+            {% else %}
+                <span class="pagination-disabled" aria-disabled="true">&raquo;</span>
+            {% endif %}
+        </div>
+</section>
+
+{% endblock %}

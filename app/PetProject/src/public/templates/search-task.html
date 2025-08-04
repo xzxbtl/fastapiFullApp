@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Create - User{% endblock %}
+
+{% block head %}
+{{ super() }}
+    <link rel="stylesheet" href="/static/css/search-task.css">
+    <script src="/static/js/search-task.js" defer></script>
+{% endblock %}
+
+{% block content %}
+    <section>
+        <div class="search-container">
+            <h1 class="search-title">Search Task by ID</h1>
+            <form id="searchTaskForm" class="search-form">
+                <div class="form-group">
+                    <label for="task_id">Task ID</label>
+                    <input type="number" id="task_id" name="task_id" required placeholder="Enter task ID" min="1">
+                </div>
+
+                <button type="submit" class="search-btn">Search Task</button>
+
+                <div class="error-message" id="errorMessage">
+                    Task not found. Please check the ID and try again.
+                </div>
+            </form>
+
+            <div class="result-container" id="resultContainer">
+                <div class="task-details">
+                    <h3>Task Details</h3>
+                    <div class="task-field">
+                        <span class="field-label">ID:</span>
+                        <span class="field-value" id="taskId"></span>
+                    </div>
+                    <div class="task-field">
+                        <span class="field-label">Title:</span>
+                        <span class="field-value" id="taskTitle"></span>
+                    </div>
+                    <div class="task-field">
+                        <span class="field-label">Description:</span>
+                        <span class="field-value" id="taskDescription"></span>
+                    </div>
+                    <div class="task-field">
+                        <span class="field-label">Author:</span>
+                        <span class="field-value" id="taskAuthor"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+{% endblock %}

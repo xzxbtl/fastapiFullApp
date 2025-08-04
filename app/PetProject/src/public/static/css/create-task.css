@@ -1,0 +1,154 @@
+/* Main section styling */
+section {
+    max-width: 800px;
+    margin: 40px auto;
+    padding: 0 20px;
+}
+
+/* Form container */
+.form-container {
+    background-color: white;
+    border-radius: 10px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+    padding: 30px;
+}
+
+/* Form title */
+.form-title {
+    font-size: 2rem;
+    color: #2c3e50;
+    margin-bottom: 30px;
+    text-align: center;
+    font-weight: 600;
+}
+
+/* Form groups */
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+    color: #2c3e50;
+}
+
+.form-group input,
+.form-group textarea {
+    width: 100%;
+    padding: 12px 15px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 1rem;
+    transition: border-color 0.3s;
+    color: #2c3e50;
+}
+
+.form-group textarea {
+    min-height: 100px;
+    resize: vertical;
+}
+
+/* Focus states */
+.form-group input:focus,
+.form-group textarea:focus {
+    border-color: #3498db;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.2);
+}
+
+/* Optional field indicator */
+.optional {
+    color: #7f8c8d;
+    font-size: 0.9rem;
+    font-weight: normal;
+}
+
+/* Submit button */
+.submit-btn {
+    background-color: #3498db;
+    color: white;
+    border: none;
+    padding: 12px 20px;
+    font-size: 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    width: 100%;
+    font-weight: 600;
+    transition: background-color 0.3s;
+}
+
+.submit-btn:hover {
+    background-color: #2980b9;
+}
+
+/* Character counter */
+.char-counter {
+    font-size: 0.8rem;
+    color: #7f8c8d;
+    text-align: right;
+    margin-top: 5px;
+}
+
+.char-counter.warning {
+    color: #e67e22;
+}
+
+.char-counter.error {
+    color: #e74c3c;
+}
+
+/* Result container */
+.result-container {
+    background-color: #f8f9fa;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+    border: 1px solid #e9ecef;
+}
+
+/* Result card */
+.result-card {
+    background-color: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.result-card h2 {
+    color: #28a745;
+    margin-bottom: 15px;
+    text-align: center;
+}
+
+/* Task details */
+.task-details {
+    margin: 20px 0;
+}
+
+.task-details p {
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #eee;
+}
+
+.task-details strong {
+    color: #2c3e50;
+    min-width: 80px;
+    display: inline-block;
+}
+
+.task-details p span {
+    color: #2c3e50;
+}
+
+/* Secondary button */
+#createAnotherBtn {
+    background-color: #6c757d;
+    margin-top: 20px;
+}
+
+#createAnotherBtn:hover {
+    background-color: #5a6268;
+}

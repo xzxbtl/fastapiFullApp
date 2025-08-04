@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %} Search - User {% endblock %}
+
+{% block head %}
+{{ super() }}
+    <link rel="stylesheet" href="/static/css/search-user.css">
+    <script src="/static/js/search-user.js" defer></script>
+{% endblock %}
+
+
+{% block content %}
+    <section>
+        <div class="search-container">
+            <h1 class="search-title">Search User</h1>
+            <form id="searchUserForm" class="search-form">
+                <div class="form-group">
+                    <label for="user_id_or_username">User ID or Username</label>
+                    <input type="text" id="user_id_or_username" name="user_id_or_username" required
+                           placeholder="Enter user ID or username">
+                    <p class="info-text">You can search by either user ID (number) or username (text)</p>
+                </div>
+
+                <button type="submit" class="search-btn">Search User</button>
+
+                <div class="error-message" id="errorMessage">
+                    User not found. Please check the ID/username and try again.
+                </div>
+            </form>
+
+            <div class="result-container" id="resultContainer">
+                <div class="user-details">
+                    <h3>User Details</h3>
+                    <div class="user-field">
+                        <span class="field-label">ID:</span>
+                        <span class="field-value" id="userId"></span>
+                    </div>
+                    <div class="user-field">
+                        <span class="field-label">Username:</span>
+                        <span class="field-value" id="userUsername"></span>
+                    </div>
+                    <div class="user-field">
+                        <span class="field-label">Email:</span>
+                        <span class="field-value" id="userEmail"></span>
+                    </div>
+                    <div class="user-field">
+                        <span class="field-label">Age:</span>
+                        <span class="field-value" id="userAge"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+{% endblock %}

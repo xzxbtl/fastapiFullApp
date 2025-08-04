@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}Create - Task{% endblock %}
+
+{% block head %}
+{{ super() }}
+    <link rel="stylesheet" href="/static/css/create-task.css">
+    <script src="/static/js/create-task.js" defer></script>
+{% endblock %}
+
+{% block content %}
+    <section>
+        <div class="form-container">
+            <h1 class="form-title">Create New Task</h1>
+
+            <div id="resultContainer" class="result-container" style="display: none;">
+                <div class="result-card">
+                    <h2>Task Created Successfully!</h2>
+                    <div class="task-details">
+                        <p><strong>ID:</strong> <span id="resultId"></span></p>
+                        <p><strong>Title:</strong> <span id="resultTitle"></span></p>
+                        <p><strong>Author:</strong> <span id="resultAuthor"></span></p>
+                    </div>
+                    <button id="createAnotherBtn" class="submit-btn">Create Another Task</button>
+                </div>
+            </div>
+
+            <form id="createTaskForm" action="{{ url_for('create_task') }}" method="post">
+                <div class="form-group">
+                    <label for="title">Task Title</label>
+                    <input type="text" id="title" name="title" minlength="1" maxlength="80" required
+                           placeholder="Enter task title (1-80 characters)">
+                    <div class="char-counter" id="titleCounter">0/80</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="description">Description <span class="optional">(optional)</span></label>
+                    <textarea id="description" name="description" maxlength="300"
+                              placeholder="Enter task description (max 300 characters)"></textarea>
+                    <div class="char-counter" id="descCounter">0/300</div>
+                </div>
+
+                <button type="submit" class="submit-btn">Create Task</button>
+            </form>
+        </div>
+    </section>
+{% endblock %}

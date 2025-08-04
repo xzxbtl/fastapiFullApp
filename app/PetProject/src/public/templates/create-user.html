@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Create - User{% endblock %}
+
+{% block head %}
+{{ super() }}
+    <link rel="stylesheet" href="/static/css/create-user.css">
+    <script src="/static/js/create-user.js" defer></script>
+{% endblock %}
+
+{% block content %}
+    <section>
+        <div class="form-container">
+            <h1 class="form-title">Create New User</h1>
+
+            <div id="resultContainer" class="result-container" style="display: none;">
+                <div class="result-card">
+                    <h2>User Created Successfully!</h2>
+                    <div class="task-details">
+                        <p><strong>ID:</strong> <span id="resultId"></span></p>
+                        <p><strong>Username:</strong> <span id="resultUsername"></span></p>
+                        <p><strong>Age:</strong> <span id="resultAge"></span></p>
+                        <p><strong>Password:</strong> <span id="resultPassword"></span></p>
+                        <p><strong>Email:</strong> <span id="resultEmail"></span></p>
+                        <p><strong>Access_LvL:</strong> <span id="resultAccess"></span></p>
+                    </div>
+                    <button id="createAnotherBtn" class="submit-btn">Create Another User</button>
+                </div>
+            </div>
+
+            <form id="createUserForm" method="post" action="{{ url_for('create_user') }}">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" minlength="1" maxlength="64" required placeholder="Enter username">
+                </div>
+
+                <div class="form-group">
+                    <label for="age">Age <span class="optional">(optional)</span></label>
+                    <input type="number" id="age" name="age" max="120" placeholder="Enter age">
+                </div>
+
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" required placeholder="Enter email" min="8" max="64">
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" minlength="8" maxlength="64" required placeholder="Enter password">
+                    <div class="password-strength">
+                        <div class="strength-meter" id="strengthMeter"></div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="access_level">Access Level</label>
+                    <input type="number" id="access_level" name="access_level" min="1" max="3" required value="1">
+                </div>
+
+                <button type="submit" class="submit-btn">Create User</button>
+            </form>
+        </div>
+    </section>
+{% endblock %}

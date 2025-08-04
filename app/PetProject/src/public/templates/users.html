@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %} All Users {% endblock %}
+
+
+{% block head %}
+    {{ super() }}
+    <link rel="stylesheet" href="/static/css/users.css">
+{% endblock %}
+
+{% block content %}
+<section>
+    <div class="container">
+        {% for user in users %}
+        <div class="user-card">
+            <div class="user-header">
+                {% if user.image %}
+                    <img src="{{ user.image }}" class="user-avatar" alt="Аватар {{ user.username }}">
+                {% else %}
+                    <img src="/static/media/user-base.png" class="user-avatar" alt="Аватар по умолчанию">
+                {% endif %}
+                <h3 class="user-nickname">{{ user.username }}</h3>
+            </div>
+
+            <div class="user-details">
+                <p class="user-age">
+                    <strong>Возраст:</strong>
+                    {% if user.age %}
+                        {{ user.age }} лет
+                    {% else %}
+                        Не указано
+                    {% endif %}
+                </p>
+
+                <p class="user-bio">
+                    <strong>О себе:</strong>
+                    {% if user.bio %}
+                        {{ user.bio[:80] }}{% if user.bio|length > 80 %}...{% endif %}
+                    {% else %}
+                        Не указано
+                    {% endif %}
+                </p>
+            </div>
+
+            <a href="#" class="user-more-link">Подробнее</a>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="pagination">
+        {% if pagination.has_prev %}
+            <a href="?page={{ pagination.prev_num }}" class="pagination-link" aria-label="Предыдущая страница">
+                &laquo;
+            </a>
+        {% else %}
+            <span class="pagination-disabled" aria-disabled="true">&laquo;</span>
+        {% endif %}
+
+        {% set start_page = [1, pagination.current_page - 2]|max %}
+        {% set end_page = [pagination.total_pages, pagination.current_page + 2]|min %}
+
+        {% if start_page > 1 %}
+            <a href="?page=1" class="pagination-link">1</a>
+            {% if start_page > 2 %}<span class="pagination-ellipsis">...</span>{% endif %}
+        {% endif %}
+
+        {% for page_num in range(start_page, end_page + 1) %}
+            {% if page_num == pagination.current_page %}
+                <span class="pagination-active" aria-current="page">{{ page_num }}</span>
+            {% else %}
+                <a href="?page={{ page_num }}" class="pagination-link">{{ page_num }}</a>
+            {% endif %}
+        {% endfor %}
+
+        {% if end_page < pagination.total_pages %}
+            {% if end_page < pagination.total_pages - 1 %}<span class="pagination-ellipsis">...</span>{% endif %}
+            <a href="?page={{ pagination.total_pages }}" class="pagination-link">{{ pagination.total_pages }}</a>
+        {% endif %}
+
+        {% if pagination.has_next %}
+            <a href="?page={{ pagination.next_num }}" class="pagination-link" aria-label="Следующая страница">
+                &raquo;
+            </a>
+        {% else %}
+            <span class="pagination-disabled" aria-disabled="true">&raquo;</span>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

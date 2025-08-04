@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% block head %}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+    {% endblock %}
+</head>
+<body>
+    <header>
+        <div class="header-block">
+            <div class="headler-line">
+                <a href="{{ url_for('get_home_page') }}" class="logo-site">
+                    <img src="/static/media/d6d0d47d2fae396f10a6a29064104214.png" style="width: 64px; height: 64px;" alt="logo-site">
+                </a>
+
+                <div class="dropdown">
+                    <a href="#" class="dropdown-title">Tasks</a>
+                    <div class="dropdown-content">
+                        <a href="{{ url_for('task_create_form_redirected') }}">Create Task</a>
+                        <a href="{{ url_for('task_search_form_redirected') }}">Search Task</a>
+                        <a href="{{ url_for('get_tasks') }}">All Tasks</a>
+                    </div>
+                </div>
+
+                <div class="dropdown">
+                    <a href="#" class="dropdown-title">Users</a>
+                    <div class="dropdown-content">
+                        <a href="{{ url_for('user_create_form_redirected') }}">Create User</a>
+                        <a href="{{ url_for('user_search_form_redirected') }}">Search Users</a>
+                        <a href="{{ url_for('get_users') }}">All Users</a>
+                        <a href="{{ url_for('user_edit_form_redirected') }}">Edit User</a>
+                    </div>
+                </div>
+
+                {% if token_status %}
+                    <div class="dropdown">
+                        <a href="#" class="dropdown-title">Profile</a>
+                        <div class="dropdown-content">
+                            <a href="#">Profile</a>
+                            <a href="#">Exit</a>
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="login-exit">
+                        <a href="#">Enter</a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </header>
+    {% block content %}{% endblock %}
+</body>
+</html>
