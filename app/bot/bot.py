@@ -3,33 +3,29 @@ import os
 from aiogram import Bot, Dispatcher
 from datetime import datetime
 from aiogram.enums import ParseMode
-from logs.logg import logger
-from aiogram.types import Message
-from faststream.rabbit import RabbitBroker
+from bot.logs.logg import logger
 from dotenv import load_dotenv
+from bot.handlers import start
+from broker.broker_service import broker
+from bot.base.main.core import get_bot_users, get_admin_bot_users
 
 
 load_dotenv("bot_settings__.env")
 TOKEN = os.getenv("BOT_TOKEN")
-broker = RabbitBroker(url="amqp://rmuser:rmpassword@localhost:5672/")
-
-ADMIN_IDS = frozenset([745409469])
+bot = Bot(token=TOKEN)
 
 
 @broker.subscriber("user_actions")
-async def handle_messages(data: str, message: Message, bot: Bot):
-    try:
-        await bot.send_message(chat_id=message.chat.id, text=data, parse_mode=ParseMode.MARKDOWN)
-        logger.info(f"Получено действие пользователя - {data}")
-    except Exception as e:
-        logger.error(f"Error sending message: {e}")
+async def handle_messages(data: str):
+    task = asyncio.create_task(global_message(data))
 
 
-async def global_message(data: str, bot: Bot):
+async def admin_global_message(data: str):
+    ADMIN_IDS = await get_admin_bot_users()
+    logger.info(f"Получено админ действие - {data}")
     for user_id in ADMIN_IDS:
         try:
             await bot.send_message(chat_id=user_id, text=data, parse_mode=ParseMode.MARKDOWN)
-            logger.info(f"Получено админ действие - {data}")
             await asyncio.sleep(0.15)
         except Exception as e:
             logger.error(f"Error sending to admin {user_id}: {e}")
@@ -37,17 +33,33 @@ async def global_message(data: str, bot: Bot):
         logger.debug("Рассылка админам - Успешна")
 
 
-@broker.subscriber("admin_actions")
-async def handle_admin_messages(data: str, bot: Bot):
-    task = asyncio.create_task(global_message(data, bot))
+async def global_message(data: str):
+    USER_IDS = await get_bot_users()
+    logger.info(f"Получено действие пользователя - {data}")
+    for user_id in USER_IDS:
+        try:
+            await bot.send_message(chat_id=user_id, text=data, parse_mode=ParseMode.MARKDOWN)
+        except Exception as e:
+            logger.error(f"Error sending message: {e}")
 
+
+@broker.subscriber("admin_actions")
+async def handle_admin_messages(data: str):
+    task = asyncio.create_task(admin_global_message(data))
 
 
 async def main():
-    bot = Bot(token=TOKEN)
-    dp = Dispatcher()
-    dp["started_at"] = datetime.now().strftime("%d-%m-%Y %H:%M")
-    await dp.start_polling(bot, skip_updates=True)
+    async with broker:
+        dp = Dispatcher()
+        dp.include_routers(start.start_router)
+        dp["started_at"] = datetime.now().strftime("%d-%m-%Y %H:%M")
+        try:
+            await broker.start()
+        except Exception as e:
+            logger.error(f"Error connecting to broker: {e}")
+
+        await dp.start_polling(bot, skip_updates=True)
+    logger.error("Брокер закрылся | Бот выключен")
 
 
 if __name__ == "__main__":

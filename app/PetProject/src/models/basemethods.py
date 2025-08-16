@@ -2,7 +2,7 @@ from typing import TypeVar, Generic, List, Union
 from sqlalchemy import select, desc
 from sqlalchemy.orm import selectinload
 from PetProject.src.api.dependensis import SessionDeep
-from PetProject.src.database import Base
+from shared.base import Base
 from PetProject.src.utils.logs.logs import logger
 
 VT = TypeVar('VT', bound=Base)

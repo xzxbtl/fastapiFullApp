@@ -1,5 +1,5 @@
 from typing import List
-from PetProject.src.database import Base
+from shared.base import Base
 from sqlalchemy.orm import mapped_column, Mapped, relationship
 from sqlalchemy import String
 
@@ -15,6 +15,5 @@ class Users(Base):
     bio: Mapped[str] = mapped_column(String(140), nullable=True)
     avatar: Mapped[str] = mapped_column(String(255), nullable=True)
     access_lvl: Mapped[int] = mapped_column(nullable=False, default=1)
-    token: Mapped[str] = mapped_column(nullable=False, unique=True)
 
     todos: Mapped[List["ToDoModel"]] = relationship(back_populates="author")

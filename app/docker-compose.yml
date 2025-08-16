@@ -19,6 +19,17 @@ services:
       timeout: 10s
       retries: 5
 
+  bot:
+    build: .
+    environment:
+      - SERVICE_TYPE=bot
+      - PYTHONPATH=/app
+    depends_on:
+      - fastapiauth
+    env_file:
+      - bot/bot_settings__.env
+    restart: unless-stopped
+
   fastapiauth:
     build: .
     ports:
@@ -27,6 +38,8 @@ services:
       fastapirabbit:
         condition: service_healthy
       postgresql:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     env_file:
       - PetProject/src/admin_conf.env

@@ -1,5 +1,7 @@
 import json
-from datetime import timedelta
+from secrets import compare_digest
+from datetime import datetime
+from sqlalchemy import or_
 from typing import Annotated, Dict, Union, Any
 from fastapi import APIRouter, Body, HTTPException, Request, Response
 from math import ceil
@@ -10,17 +12,16 @@ from PetProject.src.schemas.users import UserCreate, UserResponse, UserRedactAdm
 from PetProject.src.utils.hashfunc import hash_password
 from PetProject.src.utils.ratelimit import rate_limit
 from PetProject.src.utils.logs.logs import logger
-from PetProject.src.utils.token_generation import create_access_token, config, verify_jwt_token
+from PetProject.src.utils.token_generation import set_created_tokens, config, auth_middleware
 from PetProject.src.api.login_registration.config import admin_config
 from sqlalchemy import select, func
 from PetProject.src.schemas.pagination import SortEnum
 from fastapi import Header
 from PetProject.src.api.pages.pages import templates
-from faststream.rabbit.fastapi import RabbitRouter
+from broker.broker_service import broker
 
-
+rabbit_user_router = broker
 router = APIRouter(tags=["Users 🤦‍♂️"])
-rabbit_user_router = RabbitRouter("amqp://rmuser:rmpassword@rabbitmq:5672/")
 
 
 @router.post(
@@ -53,31 +54,28 @@ async def admin_authorization(
     user_agent = request.headers.get("user-agent")
     referer = request.headers.get("referer")
     try:
-        if (user.username == admin_config.ADMIN_USERNAME and
-                user.password == admin_config.ADMIN_PASSWORD and
-                user.email == admin_config.ADMIN_EMAIL):
+        if (compare_digest(user.username, admin_config.ADMIN_USERNAME) and
+                compare_digest(user.password, admin_config.ADMIN_PASSWORD) and
+                compare_digest(user.email, admin_config.ADMIN_EMAIL)):
 
             access_level = int(admin_config.ADMIN_BACKEND_LVL)
             user.access_level = access_level
             try:
-                access_token_expires = timedelta(days=1)
-                access_token = await create_access_token(
-                    data={"sub": user.username, "lvl": user.access_level},
-                    expires_delta=access_token_expires)
-                response.set_cookie(key=config.JWT_ACCESS_COOKIE_NAME, value=str(access_token),
-                                    httponly=True, secure=True)
+                await set_created_tokens(user, response)
+
                 logger.info(msg=f"Авторизован админ {client_ip} - {user.username}")
-                await rabbit_user_router.broker.publish(
+
+                await rabbit_user_router.publish(
                     f"🔐 *Admin Auth Event*\n\n"
                     f"🆔 *User:* `{user.username}`\n"
                     f"🌐 *IP:* `{client_ip}`\n"
                     f"🕒 *Time:* `{datetime.now().strftime('%d.%m.%Y %H:%M:%S')}`\n"
                     f"🔗 *Referer:* `{referer or 'Direct'}`\n"
-                    f"🖥️ *User-Agent:* \n`{truncate(user_agent, 50)}`\n\n"
+                    f"🖥️ *User-Agent:* \n`{user_agent}`\n\n"
                     f"✅ *Status:* `200` - *Successful* login",
                     queue="admin_actions"
                 )
-                return {"Authorization": "Complete"}
+                return {"status": "Authorization complete"}
 
             except Exception as e:
                 logger.warning(msg=f"{client_ip} - Ошибка при Аунтефикации Админом", exc_info=True)
@@ -85,13 +83,13 @@ async def admin_authorization(
 
         else:
             logger.info(msg=f"{client_ip} - Не пройдена аунтефикация на Админа")
-            await rabbit_user_router.broker.publish(
+            await rabbit_user_router.publish(
                 f"🔐 *Admin Auth Event*\n\n"
                 f"🆔 *User:* `{user.username}`\n"
                 f"🌐 *IP:* `{client_ip}`\n"
                 f"🕒 *Time:* `{datetime.now().strftime('%d.%m.%Y %H:%M:%S')}`\n"
                 f"🔗 *Referer:* `{referer or 'Direct'}`\n"
-                f"🖥️ *User-Agent:* \n`{truncate(user_agent, 50)}`\n\n"
+                f"🖥️ *User-Agent:* \n`{user_agent}`\n\n"
                 f"❌ *Status:* `401` - *Failed admin credentials*",
                 queue="admin_actions"
             )
@@ -126,12 +124,11 @@ async def create_user(request: Request, user: Annotated[
         }
     )
 ], session: SessionDeep, response: Response,
-                      token: SessionTokens, accept: str = Header(default="application/json")) -> Any:
+                      accept: str = Header(default="application/json")) -> Any:
     """
     Создает пользователя, требует обязательные параметры указанные в example, за исключением возраста
     Хеширует пароль на входе в БД
 
-    :param token:(dependensis:SessionTokens)
     :param response:(response:from FastAPI import Response)
     :param request:(request:from FastAPI import Request):
     :param user:UserCreate (schemas:UserCreate):
@@ -143,41 +140,62 @@ async def create_user(request: Request, user: Annotated[
     user_agent = request.headers.get("user-agent")
     referer = request.headers.get("referer")
 
-    token = request.cookies.get(config.JWT_ACCESS_COOKIE_NAME)
-
-    if token:
-        payload = await verify_jwt_token(token)
-        if payload.get('lvl', 1) < 2:
-            logger.info(msg=f"{client_ip} - Ваши привилегии не позволяют создать пользователя")
-            await rabbit_user_router.broker.publish(
-                f"🔐 *Admin Create Event*\n\n"
-                f"🌐 *IP:* `{client_ip}`\n"
-                f"🔑 *LVL:* {payload.get('lvl', 1)}\n"
-                f"🕒 *Time:* `{datetime.now().strftime('%d.%m.%Y %H:%M:%S')}`\n"
-                f"🔗 *Referer:* `{referer or 'Direct'}`\n"
-                f"🖥️ *User-Agent:* \n`{truncate(user_agent, 50)}`\n\n"
-                f"❌ *Status:* `403` - *Low level Token*",
-                queue="admin_actions"
-            )
-            raise HTTPException(status_code=403, detail="your privileges do not allow you to create a user")
-    else:
+    if not hasattr(request.state, 'user') or not request.state.user.get("authenticated"):
         logger.info(msg=f"{client_ip} - Неавторизованный пользователь")
+        if "text/html" in accept.lower():
+            return templates.TemplateResponse(
+                "error.html",
+                {
+                    "request": request,
+                    "error": 401,
+                    "error_title": "Unauthorized User",
+                    "error_type": "Error Unauthorized User",
+                    "redirect_url": "/"
+                }
+            )
         raise HTTPException(status_code=401, detail="Unauthorized User")
 
-    access_token_expires = timedelta(days=1)
-    access_token = await create_access_token(data={"sub": user.username, "lvl": user.access_level},
-                                             expires_delta=access_token_expires)
+    # Проверка уровня доступа
+    if request.state.user.get("lvl", 1) < 2:
+        logger.info(msg=f"{client_ip} - Недостаточный уровень доступа")
+        await rabbit_user_router.publish(
+            f"🔐 *Admin Create Event*\n\n"
+            f"🌐 *IP:* `{client_ip}`\n"
+            f"🔑 *LVL:* {request.state.user.get('lvl', 1)}\n"
+            f"🕒 *Time:* `{datetime.now().strftime('%d.%m.%Y %H:%M:%S')}`\n"
+            f"🔗 *Referer:* `{referer or 'Direct'}`\n"
+            f"🖥️ *User-Agent:* \n`{user_agent}`\n\n"
+            f"❌ *Status:* `403` - *Low level Token*",
+            queue="admin_actions"
+        )
+        raise HTTPException(status_code=403,
+                            detail="Your privileges do not allow you to create a user")
 
     try:
+        # Проверка существующего пользователя (исправленная версия)
+        existing_user = await session.execute(
+            select(Users)
+            .where(or_(
+                Users.username == user.username,
+                Users.email == user.email
+            ))
+        )
+
+        if existing_user.scalars().first():
+            raise HTTPException(
+                status_code=400,
+                detail="Username or email already exists"
+            )
+
         new_db_user = Users(
             username=user.username,
             age=user.age,
             email=user.email,
             password=await hash_password(user.password),
             access_lvl=user.access_level,
-            bio=user.bio,
-            token=str(access_token)
+            bio=user.bio
         )
+
         session.add(new_db_user)
         await session.commit()
         await session.refresh(new_db_user)
@@ -197,21 +215,17 @@ async def create_user(request: Request, user: Annotated[
             "✨ *New User Created!* ✨\n\n"
             f"🆔 *ID:* `{new_db_user.id}`\n"
             f"👤 *Username:* `{new_db_user.username}`\n"
-            f"🔑 *Password:* `{user.password}`\n"
             f"📧 *Email:* `{new_db_user.email}`\n"
-            f"🔒 *Access Level:* `{new_db_user.access_lvl}`\n"
+            f"🔒 *Access Level:* `{new_db_user.access_lvl}`\n\n"
             "🔧 *Details Operation:*\n"
             f"   🌐 *IP:* `{client_ip}`\n"
             f"   🕒 *Time:* `{creation_time}`\n"
-            f"   🖥️ *User-Agent:* \n`{truncate(user_agent, 50)}`\n\n"
+            f"   🖥️ *User-Agent:* \n`{user_agent}`\n\n"
             "✅ *Status:* `201` - *Success Created User!*\n\n"
         )
 
         logger.info(msg=f"Создан новый пользователь {client_ip} - {new_db_user.username}")
-        await rabbit_user_router.broker.publish(
-            notification_msg,
-            queue="admin_actions"
-        )
+        await rabbit_user_router.publish(notification_msg, queue="admin_actions")
 
         if "text/html" in accept.lower():
             return templates.TemplateResponse(
@@ -223,6 +237,9 @@ async def create_user(request: Request, user: Annotated[
                 }
             )
         return user_response
+
+    except HTTPException:
+        raise
     except Exception as e:
         await session.rollback()
         logger.error(msg=f"{client_ip} - Ошибка создания пользователя - {e}", exc_info=True)
@@ -231,7 +248,10 @@ async def create_user(request: Request, user: Annotated[
                 "error.html",
                 {
                     "request": request,
-                    "error": str(e)
+                    "error": 500,
+                    "error_title": "Error Creating User",
+                    "error_type": "Ошибка создания пользователя",
+                    "redirect_url": "/"
                 },
                 status_code=500
             )
@@ -246,11 +266,11 @@ async def get_users(request: Request, session: SessionDeep, redis: SessionRedis,
     """
     Возвращает всех пользователей, не учитывая пароли,
     которые создаются в схеме UserCreate
-    :param request:(request:from FastAPI import Request):
+    :param request:(request:from FastAPI import Request)
     :param redis:(dependensis:SessionRedis)
     :param session:(dependensis:SessionDeep)
     :param pagination:(dependensis: Pagination)
-    :param accept:
+    :param accept
     :return PaginatedResponse:(schema.user.List[PaginatedResponse] || HTML)
     """
     client_ip = request.client.host
@@ -284,7 +304,10 @@ async def get_users(request: Request, session: SessionDeep, redis: SessionRedis,
                     context={
                         "users": users_data,
                         "pagination": pagination_data,
-                        "request": request
+                        "request": request,
+                        "token_status": request.state.user.get("authenticated", False),
+                        "token_lvl": request.state.user.get("lvl", 1),
+                        "username": request.state.user.get("sub", None)
                     }
                 )
             return PaginatedUsersResponse(
@@ -320,7 +343,6 @@ async def get_users(request: Request, session: SessionDeep, redis: SessionRedis,
 
             user_responses.append(user_data)
 
-
         users_data = [user.dict() for user in user_responses]
 
         await redis.set(cache_key, json.dumps([user.dict() for user in user_responses]), ex=10)
@@ -342,7 +364,10 @@ async def get_users(request: Request, session: SessionDeep, redis: SessionRedis,
                 context={
                     "users": users_data,
                     "pagination": pagination_data,
-                    "request": request
+                    "request": request,
+                    "token_status": request.state.user.get("authenticated", False),
+                    "token_lvl": request.state.user.get("lvl", 1),
+                    "username": request.state.user.get("sub", None)
                 }
             )
 
@@ -358,17 +383,30 @@ async def get_users(request: Request, session: SessionDeep, redis: SessionRedis,
 
     except Exception as e:
         logger.warning(msg=f"{client_ip} - Ошибка при получении пользователей - {e}", exc_info=True)
+        if "text/html" in accept.lower():
+            return templates.TemplateResponse(
+                "error.html",
+                {
+                    "request": request,
+                    "error": 500,
+                    "error_title": "Error Get Users",
+                    "error_type": "Ошибка при получении пользователей",
+                    "redirect_url": "/"
+                }
+            )
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/users/{user_id_or_username}", response_model=UserResponse, status_code=200)
-async def get_user(user_id_or_username: str, session: SessionDeep, request: Request) -> UserResponse:
+async def get_user(user_id_or_username: str, session: SessionDeep, request: Request,
+                   accept: str = Header(default="application/json")) -> UserResponse:
     """
     Возвращает определенного пользователя по его username или id с учетом его пароля!!!
     смотри models -> users.py
 
-    :param request:(request:from FastAPI import Request):
-    :param user_id_or_username:str
+    :param accept:
+    :param request:(request:from FastAPI import Request)
+    :param user_id_or_username:str|int
     :param session:(dependensis:SessionDeep)
     :return use_admin - UserCreate
     """
@@ -395,9 +433,9 @@ async def get_user(user_id_or_username: str, session: SessionDeep, request: Requ
             f"   ▫️ *Bio:* _{user_admin.bio[:100] + '...' if user_admin.bio else 'Not specified'}_\n\n"
             f"🔍 *Search Details:*\n"
             f"   ▫️ *By IP:* `{client_ip}`\n"
-            f"   ▫️ *User-Agent:* `{truncate(user_agent, 50)}`\n\n"
+            f"   ▫️ *User-Agent:* `{user_agent}`\n\n"
             f"   ▫️ *Referer:* `{referer}`\n"
-            f"   ▫️ *At:* `{datetime.now().strftime('%d.%m %H:%M')}`\n"
+            f"   ▫️ *At:* `{creation_time}`\n"
             "✅ *Status:* Successfully found (200)"
         )
     else:
@@ -405,33 +443,82 @@ async def get_user(user_id_or_username: str, session: SessionDeep, request: Requ
             "❌ *USER NOT FOUND* ❌\n\n"
             f"⚠️ *Search Failed For:*\n"
             f"   ▫️ *Request From IP:* `{client_ip}`\n"
-            f"   ▫️ *At Time:* `{datetime.now().strftime('%d.%m %H:%M')}`\n\n"
+            f"   ▫️ *At Time:* `{creation_time}`\n\n"
             f"🛠 *Technical Info:*\n"
             f"   ▫️ *By IP:* `{client_ip}`\n"
-            f"   ▫️ *User-Agent:* `{truncate(user_agent, 50)}`\n\n"
+            f"   ▫️ *User-Agent:* `{user_agent}`\n\n"
             f"   ▫️ *Referer:* `{referer}`\n"
-            f"   ▫️ *At:* `{datetime.now().strftime('%d.%m %H:%M')}`\n"
+            f"   ▫️ *At:* `{creation_time}`\n"
             "🔎 *Status:* User not found (404)"
         )
 
-    await rabbit_user_router.broker.publish(
+    await rabbit_user_router.publish(
         message=notification_msg,
         queue="user_actions"
     )
-
 
     if user is not None:
         logger.info(f"Найден пользователь - {user_admin.username}")
         return user_admin
     logger.warning(msg=f"{client_ip} - Не найдено пользователь в БД")
+    if "text/html" in accept.lower():
+        return templates.TemplateResponse(
+            "error.html",
+            {
+                "request": request,
+                "error": 404,
+                "error_title": "Not Found",
+                "error_type": "User not Found",
+                "redirect_url": "/"
+            }
+        )
     raise HTTPException(status_code=404, detail="User not found")
 
 
 @router.get("/users/admin/search/{user_id_or_username}", response_model=UserRedactAdmin, status_code=200)
-async def get_full_user_info(user_id_or_username: str, session: SessionDeep, request: Request) -> UserRedactAdmin:
+async def get_full_user_info(user_id_or_username: str, session: SessionDeep, request: Request,
+                             accept: str = Header(default="application/json")) -> UserRedactAdmin:
+    """
+    Отдельная админ ручка для отображения полной информации пользователя
+
+    :param accept:
+    :param user_id_or_username: str|int
+    :param session:(dependensis:SessionDeep)
+    :param request:(request:from FastAPI import Request)
+    :return UserRedactAdmin:
+    """
     client_ip = request.client.host
-    user_agent = request.headers.get("user-agent")
-    referer = request.headers.get("referer")
+
+    if not hasattr(request.state, 'user') or not request.state.user.get("authenticated"):
+        logger.info(msg=f"{client_ip} - Необходим токен для выполнения функции")
+        if "text/html" in accept.lower():
+            return templates.TemplateResponse(
+                "error.html",
+                {
+                    "request": request,
+                    "error": 401,
+                    "error_title": "Error Token",
+                    "error_type": "Token is required",
+                    "redirect_url": "/"
+                }
+            )
+        raise HTTPException(status_code=401, detail="Token is required")
+
+    if request.state.user.get("lvl", 1) < 2:
+        logger.info(msg=f"{client_ip} - Недостаточно прав для выполнения команды")
+        if "text/html" in accept.lower():
+            return templates.TemplateResponse(
+                "error.html",
+                {
+                    "request": request,
+                    "error": 403,
+                    "error_title": "Error permissions",
+                    "error_type": "Insufficient permissions",
+                    "redirect_url": "/"
+                }
+            )
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+
     try:
         user_id = int(user_id_or_username)
         user = await get_one(Users, user_id, session)
@@ -448,32 +535,41 @@ async def get_full_user_info(user_id_or_username: str, session: SessionDeep, req
 
 @router.patch("/users/edit/{user_id_or_username}", response_model=UserRedactAdmin, status_code=200)
 async def update_user(user_id_or_username: str, request: Request, session: SessionDeep,
-                      user_data: UserRedactAdmin, token: SessionTokens) -> UserRedactAdmin:
+                      user_data: UserRedactAdmin,
+                      accept: str = Header(default="application/json")) -> UserRedactAdmin:
     client_ip = request.client.host
     user_agent = request.headers.get("user-agent")
     referer = request.headers.get("referer")
 
-    token = request.cookies.get(config.JWT_ACCESS_COOKIE_NAME)
-
-    if not token:
+    if not hasattr(request.state, 'user') or not request.state.user.get("authenticated"):
         logger.info(msg=f"{client_ip} - Необходим токен для выполнения функции")
         raise HTTPException(status_code=401, detail="Token is required")
 
-    payload = await verify_jwt_token(token)
-    access_level = payload.get('lvl', 1)
 
+    access_level = request.state.user.get("lvl", 1)
     if access_level < 2:
         logger.info(msg=f"{client_ip} - Недостаточно прав для выполнения команды")
-        await rabbit_user_router.broker.publish(
+        await rabbit_user_router.publish(
             f"🔐 *Admin Edit Event*\n\n"
             f"🌐 *IP:* `{client_ip}`\n"
             f"🔑 *LVL:* `{access_level}`\n"
             f"🕒 *Time:* `{datetime.now().strftime('%d.%m.%Y %H:%M:%S')}`\n"
             f"🔗 *Referer:* `{referer or 'Direct'}`\n"
-            f"🖥️ *User-Agent:* \n`{truncate(user_agent, 50)}`\n\n"
+            f"🖥️ *User-Agent:* \n`{user_agent}`\n\n"
             f"❌ *Status:* `403` - *Low level Token*",
             queue="admin_actions"
         )
+        if "text/html" in accept.lower():
+            return templates.TemplateResponse(
+                "error.html",
+                {
+                    "request": request,
+                    "error": 403,
+                    "error_title": "Error permissions",
+                    "error_type": "Insufficient permissions",
+                    "redirect_url": "/"
+                }
+            )
         raise HTTPException(status_code=403, detail="Insufficient permissions")
 
     try:
@@ -486,6 +582,17 @@ async def update_user(user_id_or_username: str, request: Request, session: Sessi
 
     if user is None:
         logger.warning(msg=f"{client_ip} - Пользователь не найден")
+        if "text/html" in accept.lower():
+            return templates.TemplateResponse(
+                "error.html",
+                {
+                    "request": request,
+                    "error": 404,
+                    "error_title": "Not Found",
+                    "error_type": "User not found",
+                    "redirect_url": "/"
+                }
+            )
         raise HTTPException(status_code=404, detail="User not found")
 
     """Проверка на уровень токенна + юзернейм в токене, 
@@ -520,21 +627,22 @@ async def update_user(user_id_or_username: str, request: Request, session: Sessi
     await session.commit()
     await session.refresh(user)
 
+    creation_time = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
     notification_msg = (
         "✨ *User Edited!* ✨\n\n"
         f"🆔 *ID:* `{user.id}`\n"
         f"👤 *Username:* `{user.username}`\n"
         f"🔑 *Password:* `{user_data.password}`\n"
         f"📧 *Email:* `{user.email}`\n"
-        f"📝 *BIO:* `{user.bio[:100] + '...' if user.bio else 'Not specified'}`"
+        f"📝 *BIO:* `{user.bio[:100] + '...' if user.bio else 'Not specified'}`\n"
         f"🔒 *Access Level:* `{user.access_lvl}`\n"
         "🔧 *Details Operation:*\n"
         f"   🌐 *IP:* `{client_ip}`\n"
         f"   🕒 *Time:* `{creation_time}`\n"
-        f"   🖥️ *User-Agent:* \n`{truncate(user_agent, 50)}`\n\n"
+        f"   🖥️ *User-Agent:* \n`{user_agent}`\n\n"
         "✅ *Status:* `200` - *Success Edited User!*\n\n"
     )
-    await rabbit_user_router.broker.publish(
+    await rabbit_user_router.publish(
         notification_msg,
         queue="admin_actions"
     )

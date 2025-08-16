@@ -8,5 +8,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY *.env .
 COPY . .
 
+ENV PYTHONPATH=/app
 
-CMD ["uvicorn", "PetProject.src.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["sh", "-c", "if [ $SERVICE_TYPE = 'bot' ]; then python -m bot.bot; else uvicorn PetProject.src.main:app --host 0.0.0.0 --port 8000 --reload; fi"]

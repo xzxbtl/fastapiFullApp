@@ -2,7 +2,7 @@ from typing import Annotated
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from PetProject.src.api.login_registration.config import AuthXConfigModel, security
-from PetProject.src.database import get_session, get_redis
+from shared.database import get_session, get_redis
 from PetProject.src.schemas.pagination import Pagination, pagination_params
 from redis import Redis
 

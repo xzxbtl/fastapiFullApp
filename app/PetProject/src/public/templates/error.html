@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}{{ error }} - {{ error_title }}{% endblock %}
+
+{% block head %}
+{{ super() }}
+    <link rel="stylesheet" href="/static/css/errors.css">
+{% endblock %}
+
+{% block content %}
+    <section>
+        <div class="content-block">
+            <h1>{{ error }} - {{ error_title }}</h1>
+            <div class="error-container">
+                <div class="loading-circle"></div>
+                <p class="error-message">{{ error_type }}</p>
+                <p class="redirect-message">Redirecting to home page in <span id="countdown">3</span> seconds...</p>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        let seconds = 3;
+        const countdownElement = document.getElementById('countdown');
+
+        const countdownInterval = setInterval(() => {
+            seconds--;
+            countdownElement.textContent = seconds;
+
+            if (seconds <= 0) {
+                clearInterval(countdownInterval);
+                window.location.href = "{{ redirect_url|default('/') }}";
+            }
+        }, 1000);
+    </script>
+{% endblock %}
