@@ -9,6 +9,7 @@ class AuthXConfigModel(AuthXConfig):
         super().__init__(**values)
         self.JWT_SECRET_KEY = str(os.getenv('SECRET_TOKEN'))
         self.JWT_ACCESS_COOKIE_NAME = 'user_access_token'
+        self.JWT_REFRESH_COOKIE_NAME = 'user_refresh_token'
         self.JWT_TOKEN_LOCATION = ["cookies"]
         self.JWT_COOKIE_CSRF_PROTECT = False
 

@@ -16,13 +16,12 @@ from datetime import datetime
 from PetProject.src.utils.logs.logs import logger
 from PetProject.src.schemas.pagination import SortEnum
 from PetProject.src.api.pages.pages import templates
-from PetProject.src.utils.token_generation import config
-from PetProject.src.utils.token_generation import verify_jwt_token
-from faststream.rabbit.fastapi import RabbitRouter
+from PetProject.src.utils.token_generation import config, auth_middleware
+from broker.broker_service import broker
 
 
+rabbit_tasks_router = broker
 router = APIRouter(tags=["Tasks 💻"])
-rabbit_tasks_router = RabbitRouter("amqp://rmuser:rmpassword@rabbitmq:5672/")
 
 
 @router.post("/tasks/create/", response_model=TaskResponse, status_code=201,
@@ -49,7 +48,6 @@ async def create_task(
             )
         ],
         session: SessionDeep,
-        token: SessionTokens,
         accept: str = Header(default="application/json")
 ) -> Any:
     """Создает таск + описание в docs в качестве example
@@ -59,35 +57,40 @@ async def create_task(
         :param task:(schemas.tasks:TaskCreate):
         :param session:(dependencies:SessionDeep):
         :return TaskResponse:(schemas.tasks:TaskResponse):
-        :param token:(dependensis:SessionTokens):
         :param accept:
     """
     client_ip = request.client.host
     user_agent = request.headers.get("user-agent")
     referer = request.headers.get("referer")
 
-    token = request.cookies.get(config.JWT_ACCESS_COOKIE_NAME)
-    try:
-        if token:
-            payload = await verify_jwt_token(token)
-            author_name = payload.get("sub")
-
-        else:
-            logger.info(msg=f"{client_ip} - Неавторизованный пользователь")
-            await rabbit_tasks_router.broker.publish(
-                f"🔐 *Task Create Event*\n\n"
-                f"🌐 *IP:* `{client_ip}`\n"
-                f"🕒 *Time:* `{datetime.now().strftime('%d.%m.%Y %H:%M:%S')}`\n"
-                f"🔗 *Referer:* `{referer or 'Direct'}`\n"
-                f"🖥️ *User-Agent:* \n`{truncate(user_agent, 50)}`\n\n"
-                f"❌ *Status:* `401` - *Unauthorized User*",
-                queue="user_actions"
+    if not hasattr(request.state, 'user') or not request.state.user.get("authenticated"):
+        logger.info(msg=f"{client_ip} - Неавторизованный пользователь")
+        await rabbit_tasks_router.publish(
+            f"🔐 *Task Create Event*\n\n"
+            f"🌐 *IP:* `{client_ip}`\n"
+            f"🕒 *Time:* `{datetime.now().strftime('%d.%m.%Y %H:%M:%S')}`\n"
+            f"🔗 *Referer:* `{referer or 'Direct'}`\n"
+            f"🖥️ *User-Agent:* \n`{user_agent}`\n\n"
+            f"❌ *Status:* `401` - *Unauthorized User*",
+            queue="user_actions"
+        )
+        if "text/html" in accept.lower():
+            return templates.TemplateResponse(
+                "error.html",
+                {
+                    "request": request,
+                    "error": 401,
+                    "error_title": "Unauthorized User",
+                    "error_type": "Error Unauthorized User",
+                    "redirect_url": "/"
+                }
             )
-            raise HTTPException(status_code=401, detail="Unauthorized User")
+        raise HTTPException(status_code=401, detail="Unauthorized User")
 
+    try:
+        author_name = request.state.user["sub"]
         result = await session.execute(select(Users).where(Users.username == str(author_name)))
         author = result.scalars().first()
-
 
         if author is None:
             logger.warning(msg=f"{client_ip} - Автор не найден")
@@ -121,11 +124,11 @@ async def create_task(
             "🔧 *Details Operation:*\n"
             f"   🌐 *IP:* `{client_ip}`\n"
             f"   🕒 *Time:* `{creation_time}`\n"
-            f"   🖥️ *User-Agent:* \n`{truncate(user_agent, 50)}`\n\n"
+            f"   🖥️ *User-Agent:* \n`{user_agent}`\n\n"
             "✅ *Status:* `200` - *Success Created Task!*\n\n"
         )
 
-        await rabbit_tasks_router.broker.publish(
+        await rabbit_tasks_router.publish(
             notification_msg,
             queue="user_actions"
         )
@@ -149,9 +152,11 @@ async def create_task(
                 "error.html",
                 {
                     "request": request,
-                    "error": str(e)
-                },
-                status_code=500
+                    "error": 500,
+                    "error_title": "Error Creating Task",
+                    "error_type": "Ошибка при создании задачи",
+                    "redirect_url": "/"
+                }
             )
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -203,6 +208,9 @@ async def get_tasks(request: Request,
                         "paginated_tasks": tasks_data,
                         "pagination": pagination_data,
                         "request": request,
+                        "token_status": request.state.user.get("authenticated", False),
+                        "token_lvl": request.state.user.get("lvl", 1),
+                        "username": request.state.user.get("sub", None)
                     }
                 )
             return PaginatedTasksResponse(
@@ -255,6 +263,9 @@ async def get_tasks(request: Request,
                     "paginated_tasks": tasks_data,
                     "pagination": pagination_data,
                     "request": request,
+                    "token_status": request.state.user.get("authenticated", False),
+                    "token_lvl": request.state.user.get("lvl", 1),
+                    "username": request.state.user.get("sub", None)
                 }
             )
         return PaginatedTasksResponse(
@@ -269,6 +280,17 @@ async def get_tasks(request: Request,
 
     except Exception as e:
         logger.warning(msg=f"{client_ip} - Ошибка при получении всех зачад - {e}", exc_info=True)
+        if "text/html" in accept.lower():
+            return templates.TemplateResponse(
+                "error.html",
+                {
+                    "request": request,
+                    "error": 500,
+                    "error_title": "Error Get Tasks",
+                    "error_type": "Ошибка при получении всех зачад",
+                    "redirect_url": "/"
+                }
+            )
         raise HTTPException(status_code=500, detail=str(e))
 
 

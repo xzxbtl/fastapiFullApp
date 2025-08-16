@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Login - Page{% endblock %}
+
+{% block head %}
+{{ super() }}
+    <link rel="stylesheet" href="/static/css/login.css">
+    <script src="/static/js/login.js" defer></script>
+{% endblock %}
+
+
+{% block content %}
+    <section>
+        <div class="content-block">
+            <h1>Authorization</h1>
+            <form id="login-form" class="login-form">
+                <div id="form-errors" class="error-message"></div>
+
+                <div class="form-group">
+                    <label for="username">Username or Email</label>
+                    <input type="text" id="username" name="username" required>
+                    <div id="username-error" class="field-error"></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required>
+                    <div id="password-error" class="field-error"></div>
+                </div>
+
+                <button type="submit" class="submit-btn">
+                    <span id="btn-text">Login</span>
+                    <div id="spinner" class="spinner"></div>
+                </button>
+
+                <div class="auth-actions">
+                    <a href="{{ url_for('api_register_form_redirected') }}" class="register-btn">Create new account</a>
+                </div>
+
+                <div class="social-auth">
+                    <p class="divider">or continue with</p>
+                    <div class="social-buttons">
+                        <a href="/auth/github/" class="social-btn github" aria-label="GitHub">
+                            <img src="/static/media/github-color-svgrepo-com.svg" alt="GitHub">
+                        </a>
+                        <a href="/auth/telegram/" class="social-btn telegram" aria-label="Telegram">
+                            <img src="/static/media/telegram-svgrepo-com.svg" alt="Telegram">
+                        </a>
+                        <a href="/auth/google/" class="social-btn google" aria-label="Google">
+                            <img src="/static/media/google-icon-logo-svgrepo-com.svg" alt="Google">
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </section>
+{% endblock %}

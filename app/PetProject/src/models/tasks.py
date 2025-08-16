@@ -1,6 +1,6 @@
 from sqlalchemy import ForeignKey
 from sqlalchemy.orm import mapped_column, Mapped, relationship
-from PetProject.src.database import Base
+from shared.base import Base
 from PetProject.src.models.users import Users
 
 

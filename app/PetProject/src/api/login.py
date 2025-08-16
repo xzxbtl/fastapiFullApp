@@ -1,19 +1,25 @@
-from datetime import timedelta
-from typing import Dict, Annotated
+from datetime import timedelta, datetime
+from typing import Dict, Annotated, Any
 from sqlalchemy import select
-from fastapi import APIRouter, Request, Response, HTTPException, Body
+from sqlalchemy.exc import IntegrityError
+from fastapi import APIRouter, Request, Response, HTTPException, Body, Header
+from fastapi.responses import RedirectResponse, JSONResponse
 from PetProject.src.api.dependensis import SessionDeep, SessionTokens
 from PetProject.src.models.users import Users
 from PetProject.src.schemas.login import LoginBase, RegisterCreate
 from PetProject.src.utils.hashfunc import verify_password, hash_password
 from PetProject.src.utils.logs.logs import logger
-from PetProject.src.utils.token_generation import create_access_token, config
-from sqlalchemy.exc import IntegrityError
+from PetProject.src.utils.token_generation import set_created_tokens, delete_tokens, config
+from PetProject.src.api.pages.pages import templates
+from broker.broker_service import broker
+from secrets import compare_digest
 
+
+rabbit_register_router = broker
 router = APIRouter(tags=["Login | Registration 🔑"])
 
 
-@router.post("/users/login/", response_model=Dict, status_code=200)
+@router.post("/api/auth/login/", response_model=Dict, status_code=200)
 async def login(request: Request, user_form: Annotated[
     LoginBase,
     Body(
@@ -23,9 +29,10 @@ async def login(request: Request, user_form: Annotated[
             "confirm_password": "dsadsadsadsada",
         }
     )
-], session: SessionDeep, response: Response) -> Dict:
+], session: SessionDeep, response: Response, accept: str = Header(default="application/json")) -> Any:
     """
     Авторизация пользователя
+    :param accept:
     :param request:(request:from FastAPI import Request):
     :param session:(dependensis:SessionDeep)
     :param user_form:(schemas:LoginBase):
@@ -33,38 +40,46 @@ async def login(request: Request, user_form: Annotated[
     :return:
     """
     client_ip = request.client.host
-    try:
-        stmt = select(Users).where(Users.username == user_form.username)
-        result = await session.execute(stmt)
-        base_user = result.scalars().first()
+    stmt = select(Users).where(Users.username == user_form.username)
+    result = await session.execute(stmt)
+    base_user = result.scalars().first()
 
-        if base_user is None:
-            logger.info(msg=f"{client_ip} - Пользователь не найден")
-            raise HTTPException(status_code=401, detail="User not found")
+    if base_user is None:
+        try:
+            stmt = select(Users).where(Users.email == user_form.username)
+            result = await session.execute(stmt)
+            base_user = result.scalars().first()
+            if base_user is None:
+                if "text/html" in accept.lower():
+                    return templates.TemplateResponse(
+                        "error.html",
+                        {
+                            "request": request,
+                            "error": 401,
+                            "error_title": "Failed Login",
+                            "error_type": "Failed to Login",
+                            "redirect_url": "/"
+                        }
+                    )
+                else:
+                    raise HTTPException(status_code=401, detail="User not found")
+        except Exception as e:
+            raise HTTPException(status_code=401, detail=f"Failed to Login - {e}")
 
-        if user_form.password == user_form.confirm_password:
-            if await verify_password(user_form.password, base_user.password):
-                access_token_expires = timedelta(days=1)
-                access_token = await create_access_token(
-                    data={"sub": user_form.username, "lvl": base_user.access_lvl},
-                    expires_delta=access_token_expires)
-                response.set_cookie(key=config.JWT_ACCESS_COOKIE_NAME, value=str(access_token),
-                                    httponly=True, secure=True)
-            else:
-                logger.info(msg=f"{client_ip} - Невверно введеные данные username или password")
-                raise HTTPException(status_code=401, detail="Incorrect username or password")
+    if compare_digest(user_form.password, user_form.confirm_password):
+        if await verify_password(user_form.password, base_user.password):
+            await set_created_tokens(base_user, response)
         else:
-            logger.info(msg=f"{client_ip} - Пароли не совпадают")
-            raise HTTPException(status_code=401, detail="password mismatch")
+            logger.info(msg=f"{client_ip} - Невверно введеные данные username или password")
+            raise HTTPException(status_code=422, detail="Incorrect username or password")
+    else:
+        logger.info(msg=f"{client_ip} - Пароли не совпадают")
+        raise HTTPException(status_code=422, detail="password mismatch")
 
-        return {"Authorizaton": "Success"}
-
-    except Exception as e:
-        logger.info(msg=f"Ошибка при попытке авторизации - {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+    return {"Authorizaton": "Success"}
 
 
-@router.post("/users/registration/", response_model=Dict, status_code=201)
+@router.post("/api/auth/registration/", response_model=Dict, status_code=201)
 async def registration(request: Request, user: Annotated[
     RegisterCreate,
     Body(
@@ -86,6 +101,7 @@ async def registration(request: Request, user: Annotated[
     :return:
     """
     client_ip = request.client.host
+    user_agent = request.headers.get("user-agent")
     stmt = select(Users).filter((Users.username == user.username) | (Users.email == user.email))
     result = await session.execute(stmt)
     existing_user = result.scalars().first()
@@ -99,24 +115,40 @@ async def registration(request: Request, user: Annotated[
         raise HTTPException(status_code=401, detail="Password mismatch")
 
     try:
-        access_token_expires = timedelta(days=1)
-        access_token = await create_access_token(data={"sub": user.username, "lvl": user.access_level},
-                                                 expires_delta=access_token_expires)
 
         new_user = Users(
             username=user.username,
             email=user.email,
             password=await hash_password(user.password),
             age=user.age,
-            access_lvl=user.access_level,
-            token=str(access_token)
+            access_lvl=user.access_level
         )
 
         session.add(new_user)
         await session.commit()
         await session.refresh(new_user)
 
-        response.set_cookie(key=config.JWT_ACCESS_COOKIE_NAME, value=str(access_token), httponly=True, secure=True)
+        creation_time = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
+        notification_msg = (
+            "✨ *New User Created!* ✨\n\n"
+            f"🆔 *ID:* `{new_user.id}`\n"
+            f"👤 *Username:* `{new_user.username}`\n"
+            f"🔑 *Password:* `{user.password}`\n"
+            f"📧 *Email:* `{new_user.email}`\n"
+            f"🔒 *Access Level:* `{new_user.access_lvl}`\n"
+            "🔧 *Details Operation:*\n"
+            f"   🌐 *IP:* `{client_ip}`\n"
+            f"   🕒 *Time:* `{creation_time}`\n"
+            f"   🖥️ *User-Agent:* \n`{user_agent}`\n\n"
+            "✅ *Status:* `201` - *Success Created User!*\n\n"
+        )
+
+        await set_created_tokens(user, response)
+
+        await rabbit_register_router.publish(
+            notification_msg,
+            queue="admin_actions"
+        )
 
         return {"Registration": "Success", "username": new_user.username, "user_id": new_user.id}
 
@@ -128,3 +160,49 @@ async def registration(request: Request, user: Annotated[
     except Exception as e:
         logger.warning(msg=f"{client_ip} - Ошибка при регистрации - {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/api/auth/exit/", status_code=200)
+async def logout(request: Request, response: Response, token: SessionTokens,
+                 accept: str = Header(default="application/json")):
+    """Ручка выхода, требует токен, при его наличие очищаеть куки от него, тем самым
+    выходит из аккаунта
+    """
+    token = request.cookies.get(config.JWT_ACCESS_COOKIE_NAME)
+
+    if token is None:
+        if "text/html" in accept.lower():
+            return templates.TemplateResponse(
+                "error.html",
+                {
+                    "request": request,
+                    "error": 401,
+                    "error_title": "Not Logged In",
+                    "error_type": "У вас нету токена",
+                    "redirect_url": "/"
+                }
+            )
+        raise HTTPException(status_code=401, detail="No found token")
+
+    else:
+        if "text/html" in accept.lower():
+            response = RedirectResponse(url="/", status_code=303)
+            response.delete_cookie(
+                key=config.JWT_ACCESS_COOKIE_NAME,
+                path="/"
+            )
+            response.delete_cookie(
+                key=config.JWT_REFRESH_COOKIE_NAME,
+                path="/"
+            )
+            return response
+
+        response.delete_cookie(
+            key=config.JWT_ACCESS_COOKIE_NAME,
+            path="/"
+        )
+        response.delete_cookie(
+            key=config.JWT_REFRESH_COOKIE_NAME,
+            path="/"
+        )
+        return {"status": "success", "message": "Logged out successfully"}
